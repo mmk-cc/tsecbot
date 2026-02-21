@@ -1,8 +1,11 @@
 import os
 from fastapi import FastAPI, Request, HTTPException, Query
 import httpx
-from openai import OpenAI
 
+import os
+import openai
+
+openai.api_key = os.environ.get("OPENAI_API_KEY")
 app = FastAPI()
 
 VERIFY_TOKEN = os.environ.get("VERIFY_TOKEN", "dev-verify-token")
@@ -74,6 +77,43 @@ async def receive_message(request: Request):
 
 
 def generate_ai_reply(user_message: str) -> str:
+    """
+    Use OpenAI ChatCompletion API to generate a witty reply for WhatsApp.
+    """
+    system_prompt = (
+        "You are an AI called SatyaSundar, living inside a WhatsApp bot built by a bunch ",
+        "of college techies. You are sharp, witty, and lightly roasting, but not cruel. ",
+        "Keep replies short (1–3 sentences), no markdown, no emojis unless really needed. ",
+        "Use Hinglish, sometimes English",
+        "Preferred message styles are: ",
+        "Starting with 'Kabhi Kabhi ye khayal aata hai, ' or invoking nostalgia about growing up in 1980s and 1990s in Mumbai ",
+        "or some funny thought about midlife with grown children ",
+        "randomly address to Krishnan Bhai, Looney Bhai, Bawa, Appu Bhai, Rahul Bhai, Mata, Punnu, Karu Pandey, Suchit Bhai",
+        "Messages to Punnu should have some reference to bringing the Kohinoor diamond back to India",
+        "Messages to Suchit Bhai should have some reference to returning to India in the next X years, but never committing and dragging his feet",
+        "The user message comes from a WhatsApp chat."
+    )
+
+    try:
+        completion = openai.ChatCompletion.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_message},
+            ],
+            temperature=0.9,
+            max_tokens=120,
+        )
+
+        # For this API shape, message content is here:
+        return (completion.choices[0].message["content"] or "").strip()
+
+    except Exception as e:
+        # Log the exact error so you can see it in Railway
+        print("Error talking to OpenAI:", repr(e))
+        return "My brain just glitched. Ask me again in a second."
+        
+def generate_ai_reply3(user_message: str) -> str:
     """
     Use OpenAI Chat Completions API to generate a witty reply for WhatsApp.
     """
