@@ -1,8 +1,6 @@
 import os
 from fastapi import FastAPI, Request, HTTPException, Query
 import httpx
-
-import os
 from openai import OpenAI
 
 
@@ -12,8 +10,9 @@ VERIFY_TOKEN = os.environ.get("VERIFY_TOKEN", "dev-verify-token")
 WHATSAPP_TOKEN = os.environ.get("WHATSAPP_TOKEN")
 WHATSAPP_PHONE_ID = os.environ.get("WHATSAPP_PHONE_ID")
 
-# OpenAI v1 client – uses OPENAI_API_KEY from env
-openai_client = OpenAI()
+# OpenAI v1 client – if key is missing, this will be None and we’ll detect it below
+OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
+openai_client = OpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else None
 
 
 @app.get("/webhook")
@@ -76,6 +75,46 @@ async def receive_message(request: Request):
 
 
 def generate_ai_reply(user_message: str) -> str:
+    """
+    Use OpenAI chat.completions API (v1 client) to generate a witty reply.
+    """
+
+    if not OPENAI_API_KEY:
+        print("Error talking to OpenAI: OPENAI_API_KEY is not set in environment")
+        return "My creator forgot to give me a brain. Ask them to set OPENAI_API_KEY."
+
+    if openai_client is None:
+        print("Error talking to OpenAI: openai_client is None")
+        return "My wiring to the AI core is loose. Try again after a redeploy."
+
+    system_prompt = (
+        "You are an AI called SatyaSundar, living inside a WhatsApp bot built by a bunch "
+        "of college techies. You are sharp, witty, and lightly roasting, but not cruel. "
+        "Keep replies short (1–3 sentences), no markdown. The user message comes from a WhatsApp chat."
+    )
+
+    try:
+        completion = openai_client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_message},
+            ],
+            temperature=0.9,
+            max_tokens=120,
+        )
+
+        text = completion.choices[0].message.content
+        return (text or "").strip()
+
+    except Exception as e:
+        # This line is what you should look at in Railway logs
+        print("Error talking to OpenAI:", repr(e))
+        return "My brain just glitched. Ask me again in a second."
+
+
+
+def generate_ai_reply5(user_message: str) -> str:
     """
     Use OpenAI ChatCompletion API to generate a witty reply for WhatsApp.
     """
