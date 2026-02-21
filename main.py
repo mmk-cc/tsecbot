@@ -8,19 +8,23 @@ VERIFY_TOKEN = os.environ.get("VERIFY_TOKEN", "dev-verify-token")
 
 @app.get("/webhook")
 async def verify_webhook(
-    hub_mode: str | None = None,
-    hub_challenge: str | None = None,
-    hub_verify_token: str | None = None,
+    hub_mode: str | None = Query(None, alias="hub.mode"),
+    hub_challenge: str | None = Query(None, alias="hub.challenge"),
+    hub_verify_token: str | None = Query(None, alias="hub.verify_token"),
 ):
     """
     WhatsApp (Meta) calls this once when you set the webhook URL.
-    You must echo back hub.challenge if the verify token matches.
+    We must echo back hub.challenge if the verify token matches.
     """
-    if hub_mode == "subscribe" and hub_verify_token == VERIFY_TOKEN:
-        # Meta expects the raw challenge, not JSON
-        return int(hub_challenge or 0)
-    raise HTTPException(status_code=403, detail="Verification failed")
+    print("Verification request:",
+          {"mode": hub_mode, "challenge": hub_challenge, "token": hub_verify_token})
 
+    if hub_mode == "subscribe" and hub_verify_token == VERIFY_TOKEN:
+        # Meta expects the raw challenge as plain text / number
+        return int(hub_challenge or 0)
+
+    raise HTTPException(status_code=403, detail="Verification failed")
+    
 
 @app.post("/webhook")
 async def receive_message(request: Request):
