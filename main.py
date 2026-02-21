@@ -7,6 +7,7 @@ app = FastAPI()
 VERIFY_TOKEN = os.environ.get("VERIFY_TOKEN", "dev-verify-token")
 WHATSAPP_TOKEN = os.environ.get("WHATSAPP_TOKEN")
 WHATSAPP_PHONE_ID = os.environ.get("WHATSAPP_PHONE_ID")
+BOT_PHONE_NUMBER = os.environ.get("BOT_PHONE_NUMBER")
 
 
 @app.get("/webhook")
@@ -23,6 +24,8 @@ async def verify_webhook(
 
     raise HTTPException(status_code=403, detail="Verification failed")
 
+
+BOT_PHONE_NUMBER = os.environ.get("BOT_PHONE_NUMBER")
 
 @app.post("/webhook")
 async def receive_message(request: Request):
@@ -46,26 +49,24 @@ async def receive_message(request: Request):
             text_body = message["text"]["body"]
             print(f"Message from {from_number}: {text_body!r}")
 
-            # ✅ Only respond when message starts with /ai
-            if text_body.strip().lower().startswith("/ai"):
-                # Strip the trigger and build a simple reply
-                user_content = text_body.strip()[3:].strip()
-                if not user_content:
-                    reply_text = "👋 Send `/ai something` and I’ll respond."
-                else:
-                    reply_text = f"🤖 You said: {user_content}"
+            # --- 👇 Detect mention ---
+            mentioned = False
 
-                # Send the reply back
+            context = message.get("context", {})
+            mentioned_users = context.get("mentioned_users", [])
+
+            if BOT_PHONE_NUMBER and BOT_PHONE_NUMBER in mentioned_users:
+                mentioned = True
+
+            if mentioned:
+                reply_text = f"🤖 @satyasundar has been summoned."
+
                 await send_whatsapp_message(from_number, reply_text)
-        else:
-            print(f"Non-text message from {from_number}: type={msg_type}")
 
-    except (KeyError, IndexError, TypeError) as e:
-        print("Error parsing webhook payload:", e)
+    except Exception as e:
+        print("Error:", e)
 
-    # Always ack quickly so WhatsApp is happy
     return {"status": "ok"}
-
 
 async def send_whatsapp_message(to_number: str, text: str):
     """
