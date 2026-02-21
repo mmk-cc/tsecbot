@@ -12,9 +12,6 @@ VERIFY_TOKEN = os.environ.get("VERIFY_TOKEN", "dev-verify-token")
 WHATSAPP_TOKEN = os.environ.get("WHATSAPP_TOKEN")
 WHATSAPP_PHONE_ID = os.environ.get("WHATSAPP_PHONE_ID")
 
-# OpenAI client – uses OPENAI_API_KEY from env
-openai_client = OpenAI()
-
 
 @app.get("/webhook")
 async def verify_webhook(
