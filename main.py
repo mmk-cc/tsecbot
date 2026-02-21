@@ -1,13 +1,16 @@
 import os
 from fastapi import FastAPI, Request, HTTPException, Query
 import httpx
+from openai import OpenAI
 
 app = FastAPI()
 
 VERIFY_TOKEN = os.environ.get("VERIFY_TOKEN", "dev-verify-token")
 WHATSAPP_TOKEN = os.environ.get("WHATSAPP_TOKEN")
 WHATSAPP_PHONE_ID = os.environ.get("WHATSAPP_PHONE_ID")
-BOT_PHONE_NUMBER = os.environ.get("BOT_PHONE_NUMBER")
+
+# OpenAI client – uses OPENAI_API_KEY from env
+openai_client = OpenAI()
 
 
 @app.get("/webhook")
@@ -24,8 +27,6 @@ async def verify_webhook(
 
     raise HTTPException(status_code=403, detail="Verification failed")
 
-
-BOT_PHONE_NUMBER = os.environ.get("BOT_PHONE_NUMBER")
 
 @app.post("/webhook")
 async def receive_message(request: Request):
@@ -49,24 +50,64 @@ async def receive_message(request: Request):
             text_body = message["text"]["body"]
             print(f"Message from {from_number}: {text_body!r}")
 
-            # --- 👇 Detect mention ---
-            mentioned = False
+            # 🔑 Trigger: only respond to messages starting with /ai
+            stripped = text_body.strip()
+            if stripped.lower().startswith("/ai"):
+                user_content = stripped[3:].strip()
 
-            context = message.get("context", {})
-            mentioned_users = context.get("mentioned_users", [])
-
-            if BOT_PHONE_NUMBER and BOT_PHONE_NUMBER in mentioned_users:
-                mentioned = True
-
-            if mentioned:
-                reply_text = f"🤖 @satyasundar has been summoned."
+                if not user_content:
+                    reply_text = "👋 Send `/ai something` and I’ll say something clever about it."
+                else:
+                    # Call OpenAI to generate a witty reply
+                    reply_text = generate_ai_reply(user_content)
 
                 await send_whatsapp_message(from_number, reply_text)
+        else:
+            print(f"Non-text message from {from_number}: type={msg_type}")
+
+    except (KeyError, IndexError, TypeError) as e:
+        print("Error parsing webhook payload:", e)
+
+    # Always ack quickly so WhatsApp is happy
+    return {"status": "ok"}
+
+
+def generate_ai_reply(user_message: str) -> str:
+    """
+    Use OpenAI Responses API to generate a witty reply for WhatsApp.
+    """
+    # You can tune this system prompt to change the bot's personality
+    system_prompt = (
+        "You are an AI called SatyaSundar, living inside a WhatsApp bot built by a bunch "
+        "of college techies. You are sharp, witty, and lightly roasting, but not cruel. "
+        "Keep replies short (1–3 sentences), no markdown, no emojis unless really needed. "
+        "The user message comes from a WhatsApp chat."
+    )
+
+    try:
+        response = openai_client.responses.create(
+            model="gpt-4.1-mini",
+            input=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_message},
+            ],
+        )  # :contentReference[oaicite:2]{index=2}
+
+        # Extract the first text chunk from the output
+        for item in response.output:
+            if item.type == "message":
+                for c in item.content:
+                    # In responses API, text is in content[].text for output_text
+                    if hasattr(c, "text"):
+                        return c.text.strip()
+
+        # Fallback if structure is unexpected
+        return "My brain just glitched. Ask me again?"
 
     except Exception as e:
-        print("Error:", e)
+        print("Error talking to OpenAI:", e)
+        return "My GPU is having an existential crisis. Try again in a moment."
 
-    return {"status": "ok"}
 
 async def send_whatsapp_message(to_number: str, text: str):
     """
