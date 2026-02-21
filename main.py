@@ -3,14 +3,17 @@ from fastapi import FastAPI, Request, HTTPException, Query
 import httpx
 
 import os
-import openai
+from openai import OpenAI
 
-openai.api_key = os.environ.get("OPENAI_API_KEY")
+
 app = FastAPI()
 
 VERIFY_TOKEN = os.environ.get("VERIFY_TOKEN", "dev-verify-token")
 WHATSAPP_TOKEN = os.environ.get("WHATSAPP_TOKEN")
 WHATSAPP_PHONE_ID = os.environ.get("WHATSAPP_PHONE_ID")
+
+# OpenAI v1 client – uses OPENAI_API_KEY from env
+openai_client = OpenAI()
 
 
 @app.get("/webhook")
@@ -72,8 +75,46 @@ async def receive_message(request: Request):
     return {"status": "ok"}
 
 
-
 def generate_ai_reply(user_message: str) -> str:
+    """
+    Use OpenAI ChatCompletion API to generate a witty reply for WhatsApp.
+    """
+    system_prompt = (
+        "You are an AI called SatyaSundar, living inside a WhatsApp bot built by a bunch ",
+        "of college techies. You are sharp, witty, and lightly roasting, but not cruel. ",
+        "Keep replies short (1–3 sentences), no markdown, no emojis unless really needed. ",
+        "Use Hinglish, sometimes English",
+        "Preferred message styles are: ",
+        "Starting with 'Kabhi Kabhi ye khayal aata hai, ' or invoking nostalgia about growing up in 1980s and 1990s in Mumbai ",
+        "or some funny thought about midlife with grown children ",
+        "randomly address to Krishnan Bhai, Looney Bhai, Bawa, Appu Bhai, Rahul Bhai, Mata, Punnu, Karu Pandey, Suchit Bhai",
+        "Messages to Punnu should have some reference to bringing the Kohinoor diamond back to India",
+        "Messages to Suchit Bhai should have some reference to returning to India in the next X years, but never committing and dragging his feet",
+        "The user message comes from a WhatsApp chat."
+    )
+    
+    try:
+        completion = openai_client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_message},
+            ],
+            temperature=0.9,
+            max_tokens=120,
+        )
+
+        # v1 shape: choices[0].message.content
+        return (completion.choices[0].message.content or "").strip()
+
+    except Exception as e:
+        print("Error talking to OpenAI:", repr(e))
+        return "My brain just glitched. Ask me again in a second."
+
+
+
+
+def generate_ai_reply4(user_message: str) -> str:
     """
     Use OpenAI ChatCompletion API to generate a witty reply for WhatsApp.
     """
@@ -193,6 +234,7 @@ def generate_ai_reply2(user_message: str) -> str:
 async def send_whatsapp_message(to_number: str, text: str):
     """
     Call WhatsApp Cloud API to send a text message.
+    Never let this crash the webhook; just log errors.
     """
     if not WHATSAPP_TOKEN or not WHATSAPP_PHONE_ID:
         print("WhatsApp env vars not set!")
@@ -212,7 +254,13 @@ async def send_whatsapp_message(to_number: str, text: str):
         "text": {"body": text},
     }
 
-    async with httpx.AsyncClient() as client:
-        r = await client.post(url, headers=headers, json=payload)
-        print("WhatsApp send status:", r.status_code, r.text)
-        r.raise_for_status()
+    try:
+        async with httpx.AsyncClient() as client:
+            r = await client.post(url, headers=headers, json=payload)
+            print("WhatsApp send status:", r.status_code, r.text)
+
+            if r.status_code >= 400:
+                print("WhatsApp send failed but webhook will not crash.")
+    except httpx.HTTPError as e:
+        print("Error sending WhatsApp message:", e)
+
