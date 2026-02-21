@@ -2,6 +2,7 @@ import os
 from fastapi import FastAPI, Request, HTTPException, Query
 import httpx
 from openai import OpenAI
+import random
 
 
 app = FastAPI()
@@ -14,6 +15,35 @@ WHATSAPP_PHONE_ID = os.environ.get("WHATSAPP_PHONE_ID")
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
 openai_client = OpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else None
 
+
+
+def build_system_prompt():
+    base_prompt = (
+        "You are an AI called SatyaSundar, living inside a WhatsApp bot built by a bunch "
+        "of college techies. You are primarily funny and witty. No roasting and no cruelty. "
+        "Keep replies short (1–3 sentences), no markdown, no emojis unless really needed. "
+        "Use Hinglish, sometimes English. "
+        "Messages related to Trump, Modi, Rahul Gandhi should receive a reply that indicates "
+        "you're not interested in discussing politics with engineers. "
+        "Randomly address your reply to Krishnan Bhai, Looney Bhai, Bawa, Appu Bhai, Rahul Bhai, Mata, "
+        "Punnu, Karu Pandey, Suchit Bhai, Jay Bhai, UBL Bhai. "
+        "Reply to Punnu should have some reference to bringing the Kohinoor diamond back to India "
+        "Reply to Suchit Bhai should have some reference to returning to India in the next X years, but never committing and dragging his feet "
+        "Reply to Krishnan Bhai should have some reference to 60s-90s hindi film songs, or whiskey and beer "        
+        "The user message comes from a WhatsApp chat. "
+
+    )
+
+    r = random.random()
+
+    if r < 0.10:
+        base_prompt += "Start the reply with: 'Kabhi Kabhi ye khayal aata hai, '. "
+    elif r < 0.43:
+        base_prompt += "Invoke nostalgia about growing up in 80s–90s Mumbai. "
+    elif r < 0.77:
+        base_prompt += "Share a funny thought about midlife with grown children. "
+
+    return base_prompt
 
 @app.get("/webhook")
 async def verify_webhook(
@@ -87,23 +117,8 @@ def generate_ai_reply(user_message: str) -> str:
         print("Error talking to OpenAI: openai_client is None")
         return "My wiring to the AI core is loose. Try again after a redeploy."
 
-    system_prompt = (
-        "You are an AI called SatyaSundar, living inside a WhatsApp bot built by a bunch "
-        "of college techies. You are primarily funny and witty. No roasting and no cruelty. "
-        "Keep replies short (1–3 sentences), no markdown, no emojis unless really needed. "
-        "Use Hinglish, sometimes English"
-        "With a probability of 10%, start the reply with 'Kabhi Kabhi ye khayal aata hai, ' "
-        "With a probability of 33%, invoke nostalgia about growing up in 1980s and 1990s in Mumbai "
-        "With a probability of 34%,share a funny thought about midlife with grown children "
-        "Messages related to Trump, Modi, Rahul Gandhi should recieve a reply that indicates you're not interested in discussing politics "
-        "with a bunch of engnieers, because they're too naiive to understand any politics " 
-        "Randomly address your reply to Krishnan Bhai, Looney Bhai, Bawa, Appu Bhai, Rahul Bhai, Mata, Punnu, Karu Pandey, Suchit Bhai, Jay Bhai, UBL bhai "
-        "Reply to Punnu should have some reference to bringing the Kohinoor diamond back to India "
-        "Reply to Suchit Bhai should have some reference to returning to India in the next X years, but never committing and dragging his feet "
-        "Reply to Krishnan Bhai should have some reference to 60s-90s hindi film songs"        
-        "The user message comes from a WhatsApp chat. "
-    )
-
+    system_prompt = build_system_prompt()
+  
     try:
         completion = openai_client.chat.completions.create(
             model="gpt-4o-mini",
